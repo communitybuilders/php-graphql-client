@@ -95,19 +95,19 @@ class Client
             throw new TypeError('Client::runQuery accepts the first argument of type Query or QueryBuilderInterface');
         }
 
-        return $this->runRawQuery((string) $query, $resultsAsArray, $variables);
+        return $this->runRawQuery((string) $query, $resultsAsArray, $variables, $query->getFiles());
     }
 
     /**
      * @param string $queryString
      * @param bool   $resultsAsArray
      * @param array  $variables
-     * @param
+     * @param File[] $files
      *
      * @return Results
      * @throws QueryError
      */
-    public function runRawQuery(string $queryString, $resultsAsArray = false, array $variables = []): Results
+    public function runRawQuery(string $queryString, $resultsAsArray = false, array $variables = [], array $files = []): Results
     {
         $request = new Request($this->requestMethod, $this->endpointUrl);
 
@@ -117,9 +117,42 @@ class Client
 
         // Convert empty variables array to empty json object
         if (empty($variables)) $variables = (object) null;
-        // Set query in the request body
+
         $bodyArray = ['query' => (string) $queryString, 'variables' => $variables];
-        $request = $request->withBody(Psr7\stream_for(json_encode($bodyArray)));
+        $body = json_encode($bodyArray);
+
+        if (empty($files)) {
+            // Set query in the request body
+            $request = $request->withBody(Psr7\stream_for($body));
+        }else {
+            $formatted_files = [];
+            $map = [];
+
+            foreach ($files as $key => $file) {
+                $map[$key] = ["variables.${key}"];
+
+                $formatted_files[] = [
+                    'name' => $key,
+                    'contents' => $file->contents,
+                    'filename' => $file->filename,
+                ];
+            }
+
+            $map = json_encode((object)$map);
+
+            // Remove the application/json content-type
+            $request = $request->withoutHeader('Content-Type');
+            $request = $request->withBody(new Psr7\MultipartStream(array_merge([
+                [
+                    'name'     => 'operations',
+                    'contents' => $body,
+                ],
+                [
+                    'name'     => 'map',
+                    'contents' => $map,
+                ],
+            ], $formatted_files)));
+        }
 
         // Send api request and get response
         try {
