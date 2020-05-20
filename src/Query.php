@@ -62,6 +62,11 @@ class Query extends NestableObject
     protected $arguments;
 
     /**
+     * @var File[]
+     */
+    protected $files = [];
+
+    /**
      * Private member that's not accessible from outside the class, used internally to deduce if query is nested or not
      *
      * @var bool
@@ -138,6 +143,7 @@ class Query extends NestableObject
         }
 
         $this->arguments = $arguments;
+        $this->processFiles();
 
         return $this;
     }
@@ -206,6 +212,38 @@ class Query extends NestableObject
         $constraintsString .= ')';
 
         return $constraintsString;
+    }
+
+    public function hasFiles()
+    {
+        return !empty($this->files);
+    }
+
+    public function getFiles()
+    {
+        return $this->files;
+    }
+
+    protected function processFiles()
+    {
+        $this->files = [];
+        foreach ($this->arguments as $key => $argument) {
+            if ($argument instanceof File) {
+                $this->arguments[$key] = $this->addFile($argument);
+            }
+        }
+    }
+
+    protected function addFile(File $file)
+    {
+        // Generate a variable name for the file
+        $i = count($this->files) + 1;
+        $name = "gql_file_{$i}";
+
+        $this->variables[] = new Variable($name, $file->gql_type);
+        $this->files[$name] = $file;
+
+        return "\${$name}";
     }
 
     /**
